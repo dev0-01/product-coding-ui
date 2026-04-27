@@ -4,7 +4,7 @@
       <div class="breadcrumb">
         <span class="crumb">Coding Configuration</span>
         <i class="pi pi-angle-right crumb-sep"></i>
-        <span class="crumb crumb-active">Material Coding</span>
+        <span class="crumb crumb-active">Product Coding</span>
       </div>
     </div>
 
@@ -25,11 +25,11 @@
 
 <script setup>
 import { reactive, onMounted } from 'vue'
-import CodingForm from '../components/CodingForm.vue'
-import { useCodingConfig } from '../composables/useCodingConfig.js'
-import { useCodeGenerator } from '../composables/useCodeGenerator.js'
+import CodingForm from '../components/coding-form.vue'
+import { useCodingConfig } from '../composables/use-coding-config.js'
+import { useCodeGenerator } from '../composables/use-code-generator.js'
 
-const CONFIG_NAME = 'material-coding'
+const CONFIG_NAME = 'product'
 
 const { fields, groups, previewConfig, loading, error, loadConfig } =
   useCodingConfig(CONFIG_NAME)

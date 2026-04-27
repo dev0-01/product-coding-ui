@@ -1,5 +1,5 @@
-import ProductCodingView from './views/ProductCodingView.vue'
-import MaterialCodingView from './views/MaterialCodingView.vue'
+import ProductCodingView from './views/product-coding-view.vue'
+import MaterialCodingView from './views/material-coding-view.vue'
 
 export const routes = [
   { path: '/', redirect: '/product-coding' },

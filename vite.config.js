@@ -22,21 +22,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 function codingConfigDevPlugin() {
   const EXTERNAL_DIR = process.env.ARGEPLM_CODING_DIR || 'C:/argePLM'
   const LOCAL_DIR = path.resolve(__dirname, 'config')
-  const META_KEYS = new Set([
-    'screenType',
-    'screenTitle',
-    'fieldOrder',
-    'fieldLabels',
-    'fieldRequired',
-    'fieldGroups',
-    'groupOrder',
-    'groupLabels',
-    'groupAccents',
-    'groupTags',
-    'codeFormat',
-    'codeSeparator',
-    'descriptionFormat',
-  ])
 
   function loadProps(name) {
     const candidates = [

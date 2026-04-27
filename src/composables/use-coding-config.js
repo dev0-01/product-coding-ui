@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { fetchCodingConfig } from '../api/configApi.js'
+import { getCodingConfig } from '../api/coding-config-api.js'
 
 /**
  * Composable that loads coding config from the backend and
@@ -20,7 +20,7 @@ export function useCodingConfig(configName) {
     error.value = null
 
     try {
-      const data = await fetchCodingConfig(configName)
+      const data = await getCodingConfig(configName)
 
       fields.value = data.fields.map((f) => ({
         id: f.name,
