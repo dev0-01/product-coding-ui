@@ -7,7 +7,7 @@ import vue from '@vitejs/plugin-vue'
  * Coding-config requests (/ArgeDashRest/api/coding-config/{name}) are
  * forwarded to the Spring Boot backend running on http://localhost:8083 via
  * the proxy entry below. The backend is the single source of truth - it
- * reads C:/argePLM/{name}.properties at runtime so end users can edit the
+ * reads C:/ArGePLM/{name}.properties at runtime so end users can edit the
  * file and refresh the browser without rebuilding or restarting anything.
  *
  * To run the UI locally:

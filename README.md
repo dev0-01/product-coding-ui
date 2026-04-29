@@ -7,7 +7,7 @@ itself contains **zero** hardcoded business data - it just fetches the config,
 renders the form, and shows the generated code and description live as the
 user picks values.
 
-End users edit the property files at `C:\argePLM\` and a browser refresh shows
+End users edit the property files at `C:\ArGePLM\` and a browser refresh shows
 the change immediately. No rebuild, no restart.
 
 ---
@@ -34,7 +34,7 @@ Backend (separate repo, `arge-plm-integration-onprem`):
 - **Node.js 18+** and npm
 - The Spring Boot backend (`arge-plm-integration-onprem`) running on
   `http://localhost:8083` - it serves the coding config to this UI
-- A coding config folder on disk (default `C:\argePLM\`) containing
+- A coding config folder on disk (default `C:\ArGePLM\`) containing
   `product.properties`, `material.properties`, etc. - the backend reads
   these at request time
 
@@ -55,7 +55,7 @@ npm run dev          # http://localhost:5173
 
 The UI calls `/ArgeDashRest/api/coding-config/{name}`, Vite's `server.proxy`
 forwards that to the backend on :8083, and the backend reads
-`C:\argePLM\<name>.properties` from disk and returns JSON. If the backend
+`C:\ArGePLM\<name>.properties` from disk and returns JSON. If the backend
 isn't running you'll see the form's error/retry state - that's expected.
 
 ### Available scripts
@@ -87,7 +87,7 @@ isn't running you'll see the form's error/retry state - that's expected.
 |  use-code-generator     |     | Spring Boot backend on :8083             |
 |     |  codeSegments     |     |                                          |
 |     |  generatedCode    |     |   CodingConfigService                    |
-|     |  generatedDesc    |     |     1. read C:/argePLM/product.properties|
+|     |  generatedDesc    |     |     1. read C:/ArGePLM/product.properties|
 |     v                   |     |        (external, user-editable)         |
 |  live preview shown     |     |     2. fall back to classpath if missing |
 +-------------------------+     |     3. parse key=value -> JSON           |
@@ -108,7 +108,7 @@ as selections change.
 
 ## 5. The `.properties` config format
 
-Each screen is one file: `C:\argePLM\<name>.properties`. Lines starting with
+Each screen is one file: `C:\ArGePLM\<name>.properties`. Lines starting with
 `#` are comments. Keys are simple `key=value`. Values use `,` to separate
 list items and `|` to separate `code|label` pairs.
 
@@ -205,7 +205,7 @@ the frontend code never has to know which one is serving it.
 The Spring Boot service (`CodingConfigService`) resolves a config name in
 this order on every request:
 
-1. `${argeplm.coding.dir}/<name>.properties` (default `C:/argePLM`,
+1. `${argeplm.coding.dir}/<name>.properties` (default `C:/ArGePLM`,
    overridable via `application.properties` or the `ARGEPLM_CODING_DIR`
    env var) - the **external, user-editable** copy
 2. `classpath:/<name>.properties` - bundled fallback inside the JAR, used
@@ -223,7 +223,7 @@ Spring Boot at request time.
 
 This is the whole point of the architecture. The workflow is:
 
-1. Open `C:\argePLM\product.properties` in any text editor.
+1. Open `C:\ArGePLM\product.properties` in any text editor.
 2. Change a label, add an option, reorder fields, add a new group, ...
 3. Save.
 4. Refresh the browser tab.
@@ -241,7 +241,7 @@ plain refresh is enough - no need for hard-reload.
 
 1. Create the config:
    ```
-   C:\argePLM\tooling.properties
+   C:\ArGePLM\tooling.properties
    ```
    Use the format from section 5.
 
@@ -314,9 +314,9 @@ product-coding-ui/
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `404 Request failed with status code 404` on the screen | The config name in the view doesn't match a file in `C:\argePLM\` | Rename either side so they match. The view's `CONFIG_NAME` looks for `<CONFIG_NAME>.properties`. |
+| `404 Request failed with status code 404` on the screen | The config name in the view doesn't match a file in `C:\ArGePLM\` | Rename either side so they match. The view's `CONFIG_NAME` looks for `<CONFIG_NAME>.properties`. |
 | `Network Error` / `ECONNREFUSED` on the screen | Spring Boot backend isn't running on port 8083 | Start `arge-plm-integration-onprem` first, then refresh the UI. |
-| Edits to `C:\argePLM\<name>.properties` don't show after refresh | Browser served a cached page | Hard refresh once (Ctrl+Shift+R). After that, the cache-busting query param keeps it fresh. |
+| Edits to `C:\ArGePLM\<name>.properties` don't show after refresh | Browser served a cached page | Hard refresh once (Ctrl+Shift+R). After that, the cache-busting query param keeps it fresh. |
 | `Failed to resolve import "../components/CodingForm.vue"` | Old import path referencing PascalCase filename | Make sure all imports use kebab-case (`coding-form.vue`, `use-coding-config.js`, etc.). |
 | `npm run build` complains about missing imports | Same as above, but reachable only at build time | Same fix - check imports in any newly added view. |
 | Two HMR reloads then a blank page | The dev plugin returned 200 but with malformed JSON, usually because the `.properties` file has a syntax error | Open the properties file, check for stray characters, missing `|`, or unclosed comma lists. |

@@ -8,7 +8,7 @@ const BASE_URL = '/ArgeDashRest/api/coding-config'
  *
  * The `_t` query parameter and explicit no-cache headers force the browser
  * (and any intermediate proxy) to bypass cache, so editing the properties
- * file in C:/argePLM and refreshing the page always shows the latest data.
+ * file in C:/ArGePLM and refreshing the page always shows the latest data.
  *
  * @param {string} configName - config identifier (e.g. 'product')
  * @returns {Promise<Object>} structured config
