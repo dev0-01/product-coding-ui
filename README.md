@@ -32,25 +32,31 @@ Backend (separate repo, `arge-plm-integration-onprem`):
 ## 2. Prerequisites
 
 - **Node.js 18+** and npm
+- The Spring Boot backend (`arge-plm-integration-onprem`) running on
+  `http://localhost:8083` - it serves the coding config to this UI
 - A coding config folder on disk (default `C:\argePLM\`) containing
-  `product.properties`, `material.properties`, etc.
-- (Optional, for prod-like dev) the Spring Boot backend running on
-  `http://localhost:8083`
+  `product.properties`, `material.properties`, etc. - the backend reads
+  these at request time
 
 ---
 
 ## 3. Quick start
 
 ```bash
+# 1. Start the Spring Boot backend on :8083
+#    (separate repo: arge-plm-integration-onprem)
+
+# 2. Start the UI
 git clone <this-repo>
 cd product-coding-ui
 npm install
 npm run dev          # http://localhost:5173
 ```
 
-That's it. As long as `C:\argePLM\product.properties` and
-`C:\argePLM\material.properties` exist, the two screens render immediately -
-the Vite dev server reads those files directly via a small middleware plugin.
+The UI calls `/ArgeDashRest/api/coding-config/{name}`, Vite's `server.proxy`
+forwards that to the backend on :8083, and the backend reads
+`C:\argePLM\<name>.properties` from disk and returns JSON. If the backend
+isn't running you'll see the form's error/retry state - that's expected.
 
 ### Available scripts
 
@@ -65,26 +71,29 @@ the Vite dev server reads those files directly via a small middleware plugin.
 ## 4. How it all wires together
 
 ```
-+-------------------------+     1. GET /ArgeDashRest/api/coding-config/product
-|   Browser - Vue app     | ----------------------------------------------+
-|                         |                                               |
-|  product-coding-view    |                                               v
-|     |                   |     +-----------------------------------------+
-|     v                   |     | Vite dev server (npm run dev)           |
-|  use-coding-config  --->|     |                                         |
-|     |                   |     |  codingConfigDevPlugin (vite.config.js) |
-|     v                   |     |    a) reads C:/argePLM/product.properties
-|  coding-form.vue        |     |    b) parses key=value into JSON        |
-|     +  groups/fields    |     |    c) returns { fields, groups, ... }   |
-|     +  selected values  |     +-----------------------------------------+
-|     v                   |
-|  use-code-generator     |     In production, the same URL is served by
-|     |  codeSegments     |     the Spring Boot backend (CodingConfigController)
-|     |  generatedCode    |     reading the same .properties files. The
-|     |  generatedDesc    |     Vite proxy (server.proxy in vite.config.js)
-|     v                   |     forwards /ArgeDashRest/* to localhost:8083
-|  live preview shown     |     when the dev plugin can't find a config.
-+-------------------------+
++-------------------------+    1. GET /ArgeDashRest/api/coding-config/product
+|   Browser - Vue app     | -----------------------------------------------+
+|                         |                                                |
+|  product-coding-view    |                                                v
+|     |                   |     +------------------------------------------+
+|     v                   |     | Vite dev server (npm run dev) on :5173   |
+|  use-coding-config  --->|     |                                          |
+|     |                   |     |   server.proxy forwards                  |
+|     v                   |     |   /ArgeDashRest/* -> http://localhost:8083
+|  coding-form.vue        |     +-----------------------+------------------+
+|     +  groups/fields    |                             |
+|     +  selected values  |                             v
+|     v                   |     +------------------------------------------+
+|  use-code-generator     |     | Spring Boot backend on :8083             |
+|     |  codeSegments     |     |                                          |
+|     |  generatedCode    |     |   CodingConfigService                    |
+|     |  generatedDesc    |     |     1. read C:/argePLM/product.properties|
+|     v                   |     |        (external, user-editable)         |
+|  live preview shown     |     |     2. fall back to classpath if missing |
++-------------------------+     |     3. parse key=value -> JSON           |
+                                |   CodingConfigController                 |
+                                |     return JSON with no-store headers    |
+                                +------------------------------------------+
 ```
 
 ### The data flow in one sentence
@@ -193,24 +202,20 @@ the frontend code never has to know which one is serving it.
 
 ## 7. Where the config comes from at runtime
 
-The Vite dev plugin (`codingConfigDevPlugin` in `vite.config.js`) resolves a
-config name in this order:
+The Spring Boot service (`CodingConfigService`) resolves a config name in
+this order on every request:
 
-1. `C:\argePLM\<name>.properties`
-   *(default; override the directory with the env var `ARGEPLM_CODING_DIR`)*
-2. `./config/<name>.cfg` *(local fallback inside this repo, useful for laptops
-   that don't have the `C:\argePLM\` folder)*
+1. `${argeplm.coding.dir}/<name>.properties` (default `C:/argePLM`,
+   overridable via `application.properties` or the `ARGEPLM_CODING_DIR`
+   env var) - the **external, user-editable** copy
+2. `classpath:/<name>.properties` - bundled fallback inside the JAR, used
+   on a fresh install where the external folder doesn't exist yet
 
 If neither exists, the API returns `404`.
 
-The Spring Boot service uses an identical resolution:
-
-1. `${argeplm.coding.dir}/<name>.properties` (default `C:/argePLM`,
-   overridable via `application.properties` or `ARGEPLM_CODING_DIR`)
-2. `classpath:/<name>.properties` (bundled fallback inside the JAR)
-
-So **dev and production share a single source of truth** when both point at
-`C:\argePLM\`.
+The same backend serves both dev (via the Vite proxy) and production, so
+there is **one source of truth** for config: the file on disk read by
+Spring Boot at request time.
 
 ---
 
@@ -229,9 +234,6 @@ The frontend defeats browser cache by appending a `?_t=<timestamp>` query
 param to every fetch and the backend sends `Cache-Control: no-store`, so a
 plain refresh is enough - no need for hard-reload.
 
-> **Tip:** if you want to preview a config edit without touching `C:\argePLM\`,
-> drop a `<name>.cfg` file into `./config/` (same syntax) and the dev plugin
-> will use that as a fallback.
 
 ---
 
@@ -308,28 +310,12 @@ product-coding-ui/
 
 ---
 
-## 11. Pointing dev at the real backend instead of the dev plugin
-
-Sometimes you want to test against the actual Spring Boot service instead of
-the Vite dev plugin (e.g. to verify response headers or auth):
-
-1. Start the backend on `http://localhost:8083`.
-2. In `vite.config.js`, remove `codingConfigDevPlugin()` from the `plugins`
-   array (or rename one of its properties files in `C:\argePLM\` so the
-   plugin returns 404 - the request will then fall through to the
-   `/ArgeDashRest` proxy entry already configured).
-
-The `server.proxy` block forwards `/ArgeDashRest/*` to `localhost:8083`
-unchanged, so the same fetch URLs work without code changes.
-
----
-
-## 12. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `404 Request failed with status code 404` on the screen | The config name in the view doesn't match a file in `C:\argePLM\` | Rename either side so they match. The view's `CONFIG_NAME` looks for `<CONFIG_NAME>.properties`. |
-| `Internal server error: CONFIG_DIR is not defined` from Vite | Stale `.vite-temp` cache after editing `vite.config.js` | Stop the dev server, delete `node_modules/.vite-temp/` and `node_modules/.vite/`, run `npm run dev` again. |
+| `Network Error` / `ECONNREFUSED` on the screen | Spring Boot backend isn't running on port 8083 | Start `arge-plm-integration-onprem` first, then refresh the UI. |
 | Edits to `C:\argePLM\<name>.properties` don't show after refresh | Browser served a cached page | Hard refresh once (Ctrl+Shift+R). After that, the cache-busting query param keeps it fresh. |
 | `Failed to resolve import "../components/CodingForm.vue"` | Old import path referencing PascalCase filename | Make sure all imports use kebab-case (`coding-form.vue`, `use-coding-config.js`, etc.). |
 | `npm run build` complains about missing imports | Same as above, but reachable only at build time | Same fix - check imports in any newly added view. |
@@ -337,6 +323,6 @@ unchanged, so the same fetch URLs work without code changes.
 
 ---
 
-## 13. License & ownership
+## 12. License & ownership
 
 Internal ArGe PLM project. See repository owner for license terms.
