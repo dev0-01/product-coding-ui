@@ -12,6 +12,7 @@ export function useCodingConfig(configName) {
   const fields = ref([])
   const groups = ref([])
   const previewConfig = ref({ codeFormat: [], codeSeparator: '-', descriptionFormat: [] })
+  const hierarchyRelations = ref(null)
   const loading = ref(false)
   const error = ref(null)
 
@@ -22,13 +23,19 @@ export function useCodingConfig(configName) {
     try {
       const data = await getCodingConfig(configName)
 
+      hierarchyRelations.value = data.hierarchyRelations ?? null
+
       fields.value = data.fields.map((f) => ({
         id: f.name,
         label: f.label,
         required: f.required,
-        type: f.type,
+        type: f.type || 'select',
         group: f.group,
-        options: f.options.map((o) => ({ code: o.value, description: o.label })),
+        options: (f.options || []).map((o) => ({
+          code: o.value != null ? o.value : o.code,
+          description: o.label != null ? o.label : o.description,
+          shortCode: o.shortCode != null ? o.shortCode : (o.value != null ? o.value : o.code),
+        })),
       }))
 
       const groupDefs = data.groups || []
@@ -69,6 +76,7 @@ export function useCodingConfig(configName) {
     fields,
     groups,
     previewConfig,
+    hierarchyRelations,
     loading,
     error,
     loadConfig,

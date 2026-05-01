@@ -14,6 +14,32 @@
     </div>
 
     <template v-else>
+      <!-- ── Top toolbar (Product Rev 2) ── -->
+      <div
+        v-if="toolbarPlacement === 'top'"
+        class="plm-toolbar plm-toolbar-top"
+      >
+        <div class="toolbar-spacer"></div>
+        <div class="toolbar-actions">
+          <button
+            type="button"
+            class="plm-btn plm-btn-outline"
+            :disabled="!hasDraft"
+            @click="$emit('clear')"
+          >
+            <i class="pi pi-refresh"></i> Reset All Fields
+          </button>
+          <button
+            v-if="showAcknowledge"
+            type="button"
+            class="plm-btn plm-btn-primary"
+            @click="$emit('acknowledge')"
+          >
+            <i class="pi pi-check"></i> OK
+          </button>
+        </div>
+      </div>
+
       <!-- ── Code Output Panel ── -->
       <div class="plm-panel code-output-panel">
         <div class="panel-header">
@@ -81,6 +107,8 @@
               {{ field.label }}
               <span v-if="field.required" class="field-required">*</span>
             </label>
+
+            <template v-if="field.type === 'select'">
             <Select
               :id="field.id"
               :modelValue="selections[field.id]"
@@ -92,28 +120,60 @@
               showClear
             >
               <template #option="{ option }">
-                <div class="opt-item">
+                <div v-if="showOptionCodes" class="opt-item">
                   <span class="opt-code">{{ option.code }}</span>
                   <span class="opt-desc">{{ option.description }}</span>
                 </div>
+                <span v-else class="opt-desc-only">{{ option.description }}</span>
               </template>
               <template #value="{ value }">
-                <div v-if="value" class="opt-item">
-                  <span class="opt-code">{{ value.code }}</span>
-                  <span class="opt-desc">{{ value.description }}</span>
+                <div v-if="value">
+                  <template v-if="showOptionCodes">
+                    <div class="opt-item">
+                      <span class="opt-code">{{ value.code }}</span>
+                      <span class="opt-desc">{{ value.description }}</span>
+                    </div>
+                  </template>
+                  <span v-else class="opt-desc-only">{{ value.description }}</span>
                 </div>
               </template>
             </Select>
-            <div v-if="selections[field.id]" class="field-hint">
+
+            <div v-if="selections[field.id]" class="field-hint" :class="{ 'field-hint-codes-hidden': !showOptionCodes }">
               <i class="pi pi-check-circle"></i>
-              <span>{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
+              <span v-if="showOptionCodes">{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
+              <span v-else>{{ selections[field.id].description }}</span>
             </div>
+            </template>
+
+            <InputText
+              v-else-if="field.type === 'text'"
+              :id="field.id"
+              class="field-input"
+              :placeholder="field.label"
+              :modelValue="freeTextSelections[field.id] ?? ''"
+              @update:modelValue="onFreeText(field.id, $event)"
+            />
+
+            <div v-else-if="field.type === 'variantButton'" class="variant-field">
+              <button
+                type="button"
+                class="plm-btn plm-btn-accent"
+                @click="$emit('increment-variant')"
+              >
+                <i class="pi pi-plus"></i>
+                Variant
+              </button>
+              <span class="variant-readout mono">{{ paddedVariant }}</span>
+              <span class="variant-caption">Click to increment variant counter (preview)</span>
+            </div>
+
           </div>
         </div>
       </div>
 
-      <!-- ── Toolbar ── -->
-      <div v-if="hasAnySelection" class="plm-toolbar">
+      <!-- ── Bottom toolbar (Material / fallback) ── -->
+      <div v-if="toolbarPlacement === 'bottom' && hasAnySelection" class="plm-toolbar">
         <button class="plm-btn plm-btn-outline" @click="$emit('clear')">
           <i class="pi pi-refresh"></i> Reset All Fields
         </button>
@@ -125,6 +185,7 @@
 <script setup>
 import { computed } from 'vue'
 import Select from 'primevue/select'
+import InputText from 'primevue/inputtext'
 
 const props = defineProps({
   groups: { type: Array, required: true },
@@ -134,12 +195,34 @@ const props = defineProps({
   generatedDescription: { type: String, default: '' },
   loading: { type: Boolean, default: false },
   error: { type: String, default: null },
+  toolbarPlacement: { type: String, default: 'bottom' },
+  showAcknowledge: { type: Boolean, default: false },
+  paddedVariant: { type: String, default: '001' },
+  freeTextSelections: { type: Object, default: () => ({}) },
+  variantStepActive: { type: Boolean, default: false },
+  showOptionCodes: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['update:selection', 'clear', 'retry'])
+const emit = defineEmits([
+  'update:selection',
+  'update:freetext',
+  'clear',
+  'retry',
+  'acknowledge',
+  'increment-variant',
+])
 
 const hasAnySelection = computed(() =>
   Object.values(props.selections).some((v) => v != null),
+)
+
+const hasDraft = computed(
+  () =>
+    hasAnySelection.value ||
+    Object.values(props.freeTextSelections).some((v) =>
+      String(v ?? '').trim(),
+    ) ||
+    props.variantStepActive,
 )
 
 const codePlaceholder = computed(() => {
@@ -168,6 +251,10 @@ function charStyle(segment) {
 
 function onFieldChange(fieldId, value) {
   emit('update:selection', { fieldId, value })
+}
+
+function onFreeText(fieldId, value) {
+  emit('update:freetext', { fieldId, value })
 }
 </script>
 
@@ -424,6 +511,11 @@ function onFieldChange(fieldId, value) {
   font-size: 11px;
 }
 
+.field-hint-codes-hidden {
+  /* In Rev2, show hint but without the code part */
+  color: var(--text-muted, #8b939c);
+}
+
 /* ── Dropdown Options ── */
 .opt-item {
   display: flex;
@@ -485,5 +577,77 @@ function onFieldChange(fieldId, value) {
   align-items: center;
   justify-content: flex-end;
   padding: 6px 0;
+}
+
+.plm-toolbar-top {
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plm-btn-primary {
+  background: var(--plm-accent, #005685);
+  border-color: var(--plm-accent, #005685);
+  color: #fff;
+}
+
+.plm-btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+  color: #fff;
+}
+
+.plm-btn-accent {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  color: var(--text-secondary, #5a6570);
+}
+
+.plm-btn-accent:hover:not(:disabled) {
+  border-color: #8b5cf6;
+}
+
+.plm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.field-input {
+  width: 100%;
+  font-size: 13px;
+}
+
+.opt-desc-only {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.variant-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.variant-readout {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--plm-accent);
+}
+
+.variant-caption {
+  width: 100%;
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 </style>
