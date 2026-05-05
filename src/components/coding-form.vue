@@ -14,6 +14,32 @@
     </div>
 
     <template v-else>
+      <!-- ── Top toolbar (Product Rev 2) ── -->
+      <div
+        v-if="toolbarPlacement === 'top'"
+        class="plm-toolbar plm-toolbar-top"
+      >
+        <div class="toolbar-spacer"></div>
+        <div class="toolbar-actions">
+          <button
+            type="button"
+            class="plm-btn plm-btn-outline"
+            :disabled="!hasDraft"
+            @click="$emit('clear')"
+          >
+            <i class="pi pi-refresh"></i> Reset All Fields
+          </button>
+          <button
+            v-if="showAcknowledge"
+            type="button"
+            class="plm-btn plm-btn-primary"
+            @click="$emit('acknowledge')"
+          >
+            <i class="pi pi-check"></i> OK
+          </button>
+        </div>
+      </div>
+
       <!-- ── Code Output Panel ── -->
       <div class="plm-panel code-output-panel">
         <div class="panel-header">
@@ -81,39 +107,95 @@
               {{ field.label }}
               <span v-if="field.required" class="field-required">*</span>
             </label>
+
+            <template v-if="field.type === 'select'">
             <Select
+              :key="selectInstanceKey(group, field)"
               :id="field.id"
               :modelValue="selections[field.id]"
               @update:modelValue="onFieldChange(field.id, $event)"
               :options="field.options"
               optionLabel="description"
+              dataKey="code"
               :placeholder="`-- Select ${field.label} --`"
               class="field-select"
+              :disabled="isCascadeBlocked(field)"
               showClear
             >
               <template #option="{ option }">
-                <div class="opt-item">
+                <div v-if="showOptionCodes" class="opt-item">
                   <span class="opt-code">{{ option.code }}</span>
                   <span class="opt-desc">{{ option.description }}</span>
                 </div>
+                <span v-else class="opt-desc-only">{{ option.description }}</span>
               </template>
               <template #value="{ value }">
-                <div v-if="value" class="opt-item">
-                  <span class="opt-code">{{ value.code }}</span>
-                  <span class="opt-desc">{{ value.description }}</span>
+                <div v-if="value">
+                  <template v-if="showOptionCodes">
+                    <div class="opt-item">
+                      <span class="opt-code">{{ value.code }}</span>
+                      <span class="opt-desc">{{ value.description }}</span>
+                    </div>
+                  </template>
+                  <span v-else class="opt-desc-only">{{ value.description }}</span>
                 </div>
               </template>
             </Select>
-            <div v-if="selections[field.id]" class="field-hint">
+
+            <p
+              v-if="cascadeParentHint(field)"
+              class="field-cascade-gate"
+              role="status"
+            >
+              <i class="pi pi-info-circle" aria-hidden="true"></i>
+              <span>{{ cascadeParentHint(field) }}</span>
+            </p>
+
+            <div v-if="selections[field.id]" class="field-hint" :class="{ 'field-hint-codes-hidden': !showOptionCodes }">
               <i class="pi pi-check-circle"></i>
-              <span>{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
+              <span v-if="showOptionCodes">{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
+              <span v-else>{{ selections[field.id].description }}</span>
             </div>
+            </template>
+
+            <InputText
+              v-else-if="field.type === 'text'"
+              :id="field.id"
+              class="field-input"
+              :placeholder="field.label"
+              :modelValue="freeTextSelections[field.id] ?? ''"
+              @update:modelValue="onFreeText(field.id, $event)"
+            />
+
+            <div v-else-if="field.type === 'variantButton'" class="variant-field">
+              <div class="variant-stepper" role="group" :aria-label="`${field.label} counter`">
+                <button
+                  type="button"
+                  class="variant-stepper-btn"
+                  aria-label="Decrease variant"
+                  :disabled="!variantStepActive"
+                  @click="$emit('decrement-variant')"
+                >
+                  <i class="pi pi-minus"></i>
+                </button>
+                <span class="variant-stepper-value mono">{{ paddedVariant }}</span>
+                <button
+                  type="button"
+                  class="variant-stepper-btn"
+                  aria-label="Increase variant"
+                  @click="$emit('increment-variant')"
+                >
+                  <i class="pi pi-plus"></i>
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
 
-      <!-- ── Toolbar ── -->
-      <div v-if="hasAnySelection" class="plm-toolbar">
+      <!-- ── Bottom toolbar (Material / fallback) ── -->
+      <div v-if="toolbarPlacement === 'bottom' && hasAnySelection" class="plm-toolbar">
         <button class="plm-btn plm-btn-outline" @click="$emit('clear')">
           <i class="pi pi-refresh"></i> Reset All Fields
         </button>
@@ -125,21 +207,46 @@
 <script setup>
 import { computed } from 'vue'
 import Select from 'primevue/select'
+import InputText from 'primevue/inputtext'
 
 const props = defineProps({
   groups: { type: Array, required: true },
   selections: { type: Object, required: true },
+  hierarchyRelations: { type: Object, default: null },
   codeSegments: { type: Array, default: () => [] },
   generatedCode: { type: String, default: '' },
   generatedDescription: { type: String, default: '' },
   loading: { type: Boolean, default: false },
   error: { type: String, default: null },
+  toolbarPlacement: { type: String, default: 'bottom' },
+  showAcknowledge: { type: Boolean, default: false },
+  paddedVariant: { type: String, default: '001' },
+  freeTextSelections: { type: Object, default: () => ({}) },
+  variantStepActive: { type: Boolean, default: false },
+  showOptionCodes: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['update:selection', 'clear', 'retry'])
+const emit = defineEmits([
+  'update:selection',
+  'update:freetext',
+  'clear',
+  'retry',
+  'acknowledge',
+  'increment-variant',
+  'decrement-variant',
+])
 
 const hasAnySelection = computed(() =>
   Object.values(props.selections).some((v) => v != null),
+)
+
+const hasDraft = computed(
+  () =>
+    hasAnySelection.value ||
+    Object.values(props.freeTextSelections).some((v) =>
+      String(v ?? '').trim(),
+    ) ||
+    props.variantStepActive,
 )
 
 const codePlaceholder = computed(() => {
@@ -166,8 +273,65 @@ function charStyle(segment) {
   }
 }
 
+function findFieldLabel(fieldId) {
+  if (!fieldId) return ''
+  for (const g of props.groups) {
+    const f = g.fields?.find((x) => x.id === fieldId)
+    if (f?.label) return f.label
+  }
+  return ''
+}
+
+function parentFieldForCascade(field) {
+  const h = props.hierarchyRelations
+  if (!h || field.type !== 'select') return null
+  const edge = h[field.id]
+  return edge?.parentField ?? null
+}
+
+function isCascadeBlocked(field) {
+  const pid = parentFieldForCascade(field)
+  if (!pid) return false
+  const sel = props.selections[pid]
+  return sel == null || sel === ''
+}
+
+function cascadeParentHint(field) {
+  if (!isCascadeBlocked(field)) return ''
+  const pid = parentFieldForCascade(field)
+  const parentLbl = findFieldLabel(pid)
+  if (parentLbl) {
+    return `Select ${parentLbl} first to choose ${field.label}.`
+  }
+  return `Select the parent field above before choosing ${field.label}.`
+}
+
 function onFieldChange(fieldId, value) {
   emit('update:selection', { fieldId, value })
+}
+
+/**
+ * Remount only when the *parent* cascade path changes — not when options[] is rebuilt
+ * (same length), so the first open/click is not interrupted by destroying the Select.
+ */
+function selectInstanceKey(group, field) {
+  const s = props.selections
+  if (field.id === 'series') {
+    return `${group.id}-${field.id}`
+  }
+  const p =
+    field.id === 'model'
+      ? String(s.series?.code ?? s.series?.value ?? '')
+      : field.id === 'class'
+        ? `${s.series?.code ?? ''}|${s.model?.code ?? ''}`
+        : field.id === 'subClass'
+          ? `${s.series?.code ?? ''}|${s.model?.code ?? ''}|${s.class?.code ?? ''}`
+          : ''
+  return `${group.id}-${field.id}-${p}`
+}
+
+function onFreeText(fieldId, value) {
+  emit('update:freetext', { fieldId, value })
 }
 </script>
 
@@ -424,6 +588,36 @@ function onFieldChange(fieldId, value) {
   font-size: 11px;
 }
 
+.field-hint-codes-hidden {
+  /* In Rev2, show hint but without the code part */
+  color: var(--text-muted, #8b939c);
+}
+
+.field-cascade-gate {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary, #5a6570);
+  background: var(--surface-section, #f4f6f8);
+  border: 1px solid var(--surface-border-light, #dee2e6);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.field-cascade-gate i {
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--plm-accent, #005685);
+  font-size: 13px;
+}
+
+.field-cascade-gate span {
+  flex: 1;
+}
+
 /* ── Dropdown Options ── */
 .opt-item {
   display: flex;
@@ -485,5 +679,116 @@ function onFieldChange(fieldId, value) {
   align-items: center;
   justify-content: flex-end;
   padding: 6px 0;
+}
+
+.plm-toolbar-top {
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plm-btn-primary {
+  background: var(--plm-accent, #005685);
+  border-color: var(--plm-accent, #005685);
+  color: #fff;
+}
+
+.plm-btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+  color: #fff;
+}
+
+.plm-btn-accent {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  color: var(--text-secondary, #5a6570);
+}
+
+.plm-btn-accent:hover:not(:disabled) {
+  border-color: #8b5cf6;
+}
+
+.plm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.field-input {
+  width: 100%;
+  font-size: 13px;
+}
+
+.opt-desc-only {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.variant-field {
+  display: flex;
+  align-items: flex-start;
+}
+
+.variant-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid var(--surface-border-light, #dee2e6);
+  border-radius: var(--radius-sm, 4px);
+  overflow: hidden;
+  background: var(--surface-card, #fff);
+}
+
+.variant-stepper-btn {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-section, #f4f6f8);
+  color: var(--text-secondary, #5a6570);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.variant-stepper-btn:hover:not(:disabled) {
+  background: #e8ecf0;
+  color: var(--text-primary, #1a1d21);
+}
+
+.variant-stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.variant-stepper-btn i {
+  font-size: 11px;
+}
+
+.variant-stepper-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  padding: 0 6px;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--plm-accent, #005685);
+  border-left: 1px solid var(--surface-border-light, #dee2e6);
+  border-right: 1px solid var(--surface-border-light, #dee2e6);
+  background: var(--surface-card, #fff);
 }
 </style>
