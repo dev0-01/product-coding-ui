@@ -2,11 +2,32 @@ import { computed } from 'vue'
 
 function normOption(o) {
   if (!o || typeof o !== 'object') return null
-  return {
-    code: o.value ?? o.code,
-    description: o.label ?? o.description ?? '',
-    shortCode: o.shortCode ?? o.value ?? o.code ?? '',
+  const raw = o.value ?? o.code
+  if (raw == null || raw === '') return null
+  const code = String(raw)
+  let description = o.label != null ? o.label : o.description ?? ''
+  description = String(description).trim()
+  if (description === '' || description === '-') {
+    const sc = o.shortCode != null ? String(o.shortCode).trim() : ''
+    description = sc && sc !== '-' ? sc : 'Default'
   }
+  const sc = o.shortCode != null ? o.shortCode : raw
+  return {
+    code,
+    description,
+    shortCode: sc != null ? String(sc) : code,
+  }
+}
+
+/** Parent lookup key for hierarchy (matches backend byParentCode map keys). */
+function selectionToParentCode(sel) {
+  if (sel == null || sel === '') return ''
+  if (typeof sel === 'object') {
+    const c = sel.code != null ? sel.code : sel.value
+    if (c == null || c === '') return ''
+    return String(c)
+  }
+  return String(sel)
 }
 
 /**
@@ -20,6 +41,12 @@ export function useResolvedHierarchyGroups(groupsRef, hierarchyRef, selections) 
       return groupsRef.value
     }
 
+    // Ensure Vue tracks cascade fields (reactive `selections` from parent).
+    void selections.series
+    void selections.model
+    void selections.class
+    void selections.subClass
+
     function optionsFor(field) {
       if (field.type !== 'select') {
         return field.options || []
@@ -31,7 +58,7 @@ export function useResolvedHierarchyGroups(groupsRef, hierarchyRef, selections) 
       if (!edge || !edge.parentField) {
         return (field.options || []).map(normOption).filter(Boolean)
       }
-      const parentCode = selections[edge.parentField]?.code
+      const parentCode = selectionToParentCode(selections[edge.parentField])
       if (!parentCode) {
         return []
       }

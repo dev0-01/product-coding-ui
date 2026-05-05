@@ -1,5 +1,27 @@
 import { computed, unref } from 'vue'
 
+/** Rev 2 slide 17: voltage → …V, capacity → …Ah (no double suffix). */
+function formatManualDescriptionPart(fieldId, raw) {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+  const id = String(fieldId ?? '').toLowerCase()
+  if (id === 'voltage') {
+    const compact = t.replace(/\s/g, '')
+    if (/v$/i.test(compact)) {
+      return compact.replace(/v$/i, 'V')
+    }
+    return `${compact}V`
+  }
+  if (id === 'capacity') {
+    const compact = t.replace(/\s/g, '')
+    if (/ah$/i.test(compact)) {
+      return compact.replace(/ah$/i, 'Ah')
+    }
+    return `${compact}Ah`
+  }
+  return t
+}
+
 /**
  * Rev 2 product code: {classCode} - {stubMain} - {variant} and description from short codes + manual text.
  */
@@ -82,8 +104,10 @@ export function useProductRev2Preview(
     const manualIds = previewConfig.value?.descriptionManualFields ?? []
     const tf = textFields
     for (const id of manualIds) {
-      const v = (tf[id] ?? '').trim()
-      if (v) pieces.push(v)
+      const raw = (tf[id] ?? '').trim()
+      if (!raw) continue
+      const part = formatManualDescriptionPart(id, raw)
+      if (part) pieces.push(part)
     }
 
     return pieces.join(' ').replace(/\s+/g, ' ').trim()

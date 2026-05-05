@@ -31,11 +31,17 @@ export function useCodingConfig(configName) {
         required: f.required,
         type: f.type || 'select',
         group: f.group,
-        options: (f.options || []).map((o) => ({
-          code: o.value != null ? o.value : o.code,
-          description: o.label != null ? o.label : o.description,
-          shortCode: o.shortCode != null ? o.shortCode : (o.value != null ? o.value : o.code),
-        })),
+        options: (f.options || []).map((o) => {
+          const raw = o.value != null ? o.value : o.code
+          if (raw == null || raw === '') return null
+          const code = String(raw)
+          return {
+            code,
+            description: o.label != null ? o.label : o.description,
+            shortCode:
+              o.shortCode != null ? String(o.shortCode) : code,
+          }
+        }).filter(Boolean),
       }))
 
       const groupDefs = data.groups || []

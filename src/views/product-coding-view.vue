@@ -26,10 +26,12 @@
       :free-text-selections="textFields"
       :padded-variant="paddedVariantDisplay"
       :variant-step-active="variantOrdinal > 1"
+      :hierarchy-relations="hierarchyRelations"
       @update:selection="onSelectionChange"
       @update:freetext="onFreeText"
       @clear="clearSelections"
       @increment-variant="incrementVariant"
+      @decrement-variant="decrementVariant"
       @acknowledge="onAcknowledge"
       @retry="loadConfig"
     />
@@ -97,25 +99,21 @@ const hierarchyFingerprint = computed(() =>
   ['series', 'model', 'class', 'subClass'].map((k) => selections[k]?.code ?? '').join('|'),
 )
 
-function syncSelectionsToDisplayedOptions() {
-  for (const g of displayGroups.value) {
-    for (const f of g.fields) {
-      if (f.type !== 'select') continue
-      const cur = selections[f.id]
-      if (!cur || typeof cur !== 'object' || !cur.code) continue
-      const next = f.options?.find((o) => o.code === cur.code)
-      if (next && next !== cur) {
-        selections[f.id] = next
-      }
-    }
+/** Stable cascade identity (object refs change when options are recomputed). */
+function selectionCode(sel) {
+  if (sel == null || sel === '') return null
+  if (typeof sel === 'object') {
+    const c = sel.code ?? sel.value
+    if (c == null || c === '') return null
+    return String(c)
   }
+  return String(sel)
 }
 
-watch(displayGroups, syncSelectionsToDisplayedOptions, { deep: true })
-
 watch(
-  () => selections.series,
-  () => {
+  () => selectionCode(selections.series),
+  (code, prev) => {
+    if (code === prev) return
     selections.model = null
     selections.class = null
     selections.subClass = null
@@ -123,16 +121,18 @@ watch(
 )
 
 watch(
-  () => selections.model,
-  () => {
+  () => selectionCode(selections.model),
+  (code, prev) => {
+    if (code === prev) return
     selections.class = null
     selections.subClass = null
   },
 )
 
 watch(
-  () => selections.class,
-  () => {
+  () => selectionCode(selections.class),
+  (code, prev) => {
+    if (code === prev) return
     selections.subClass = null
   },
 )
@@ -141,7 +141,8 @@ watch(hierarchyFingerprint, () => {
   variantOrdinal.value = 1
 })
 
-watch([displayGroups, () => selections.class], autoSelectSubClass, { deep: true })
+/** No `deep` — displayGroups is replaced as a whole; deep + child updates was extra churn. */
+watch([displayGroups, () => selections.class], autoSelectSubClass, { flush: 'post' })
 
 function autoSelectSubClass() {
   if (!isRev2.value || !selections.class) return
@@ -151,7 +152,7 @@ function autoSelectSubClass() {
   const opts = fld?.options
   if (!Array.isArray(opts) || opts.length !== 1) return
   const only = opts[0]
-  if (!selections.subClass || selections.subClass.code !== only.code) {
+  if (!selections.subClass || String(selections.subClass.code) !== String(only.code)) {
     selections.subClass = only
   }
 }
@@ -160,8 +161,23 @@ function onFreeText({ fieldId, value }) {
   textFields[fieldId] = value
 }
 
+function normalizeSelectedOption(val) {
+  if (val == null || val === '') return null
+  if (typeof val !== 'object') return val
+  const raw = val.code ?? val.value
+  if (raw == null || raw === '') return null
+  const code = String(raw)
+  const description = val.description ?? val.label ?? ''
+  const shortCode =
+    val.shortCode != null ? String(val.shortCode) : code
+  return { code, description, shortCode }
+}
+
 function onSelectionChange({ fieldId, value }) {
-  selections[fieldId] = value || null
+  selections[fieldId] =
+    value && typeof value === 'object'
+      ? normalizeSelectedOption(value)
+      : value || null
 }
 
 function clearSelections() {
@@ -175,6 +191,12 @@ function clearSelections() {
 
 function incrementVariant() {
   variantOrdinal.value += 1
+}
+
+function decrementVariant() {
+  if (variantOrdinal.value > 1) {
+    variantOrdinal.value -= 1
+  }
 }
 
 function onAcknowledge() {

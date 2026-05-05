@@ -110,13 +110,16 @@
 
             <template v-if="field.type === 'select'">
             <Select
+              :key="selectInstanceKey(group, field)"
               :id="field.id"
               :modelValue="selections[field.id]"
               @update:modelValue="onFieldChange(field.id, $event)"
               :options="field.options"
               optionLabel="description"
+              dataKey="code"
               :placeholder="`-- Select ${field.label} --`"
               class="field-select"
+              :disabled="isCascadeBlocked(field)"
               showClear
             >
               <template #option="{ option }">
@@ -139,6 +142,15 @@
               </template>
             </Select>
 
+            <p
+              v-if="cascadeParentHint(field)"
+              class="field-cascade-gate"
+              role="status"
+            >
+              <i class="pi pi-info-circle" aria-hidden="true"></i>
+              <span>{{ cascadeParentHint(field) }}</span>
+            </p>
+
             <div v-if="selections[field.id]" class="field-hint" :class="{ 'field-hint-codes-hidden': !showOptionCodes }">
               <i class="pi pi-check-circle"></i>
               <span v-if="showOptionCodes">{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
@@ -156,16 +168,26 @@
             />
 
             <div v-else-if="field.type === 'variantButton'" class="variant-field">
-              <button
-                type="button"
-                class="plm-btn plm-btn-accent"
-                @click="$emit('increment-variant')"
-              >
-                <i class="pi pi-plus"></i>
-                Variant
-              </button>
-              <span class="variant-readout mono">{{ paddedVariant }}</span>
-              <span class="variant-caption">Click to increment variant counter (preview)</span>
+              <div class="variant-stepper" role="group" :aria-label="`${field.label} counter`">
+                <button
+                  type="button"
+                  class="variant-stepper-btn"
+                  aria-label="Decrease variant"
+                  :disabled="!variantStepActive"
+                  @click="$emit('decrement-variant')"
+                >
+                  <i class="pi pi-minus"></i>
+                </button>
+                <span class="variant-stepper-value mono">{{ paddedVariant }}</span>
+                <button
+                  type="button"
+                  class="variant-stepper-btn"
+                  aria-label="Increase variant"
+                  @click="$emit('increment-variant')"
+                >
+                  <i class="pi pi-plus"></i>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -190,6 +212,7 @@ import InputText from 'primevue/inputtext'
 const props = defineProps({
   groups: { type: Array, required: true },
   selections: { type: Object, required: true },
+  hierarchyRelations: { type: Object, default: null },
   codeSegments: { type: Array, default: () => [] },
   generatedCode: { type: String, default: '' },
   generatedDescription: { type: String, default: '' },
@@ -210,6 +233,7 @@ const emit = defineEmits([
   'retry',
   'acknowledge',
   'increment-variant',
+  'decrement-variant',
 ])
 
 const hasAnySelection = computed(() =>
@@ -249,8 +273,61 @@ function charStyle(segment) {
   }
 }
 
+function findFieldLabel(fieldId) {
+  if (!fieldId) return ''
+  for (const g of props.groups) {
+    const f = g.fields?.find((x) => x.id === fieldId)
+    if (f?.label) return f.label
+  }
+  return ''
+}
+
+function parentFieldForCascade(field) {
+  const h = props.hierarchyRelations
+  if (!h || field.type !== 'select') return null
+  const edge = h[field.id]
+  return edge?.parentField ?? null
+}
+
+function isCascadeBlocked(field) {
+  const pid = parentFieldForCascade(field)
+  if (!pid) return false
+  const sel = props.selections[pid]
+  return sel == null || sel === ''
+}
+
+function cascadeParentHint(field) {
+  if (!isCascadeBlocked(field)) return ''
+  const pid = parentFieldForCascade(field)
+  const parentLbl = findFieldLabel(pid)
+  if (parentLbl) {
+    return `Select ${parentLbl} first to choose ${field.label}.`
+  }
+  return `Select the parent field above before choosing ${field.label}.`
+}
+
 function onFieldChange(fieldId, value) {
   emit('update:selection', { fieldId, value })
+}
+
+/**
+ * Remount only when the *parent* cascade path changes — not when options[] is rebuilt
+ * (same length), so the first open/click is not interrupted by destroying the Select.
+ */
+function selectInstanceKey(group, field) {
+  const s = props.selections
+  if (field.id === 'series') {
+    return `${group.id}-${field.id}`
+  }
+  const p =
+    field.id === 'model'
+      ? String(s.series?.code ?? s.series?.value ?? '')
+      : field.id === 'class'
+        ? `${s.series?.code ?? ''}|${s.model?.code ?? ''}`
+        : field.id === 'subClass'
+          ? `${s.series?.code ?? ''}|${s.model?.code ?? ''}|${s.class?.code ?? ''}`
+          : ''
+  return `${group.id}-${field.id}-${p}`
 }
 
 function onFreeText(fieldId, value) {
@@ -516,6 +593,31 @@ function onFreeText(fieldId, value) {
   color: var(--text-muted, #8b939c);
 }
 
+.field-cascade-gate {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary, #5a6570);
+  background: var(--surface-section, #f4f6f8);
+  border: 1px solid var(--surface-border-light, #dee2e6);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.field-cascade-gate i {
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--plm-accent, #005685);
+  font-size: 13px;
+}
+
+.field-cascade-gate span {
+  flex: 1;
+}
+
 /* ── Dropdown Options ── */
 .opt-item {
   display: flex;
@@ -632,22 +734,61 @@ function onFreeText(fieldId, value) {
 
 .variant-field {
   display: flex;
-  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.variant-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid var(--surface-border-light, #dee2e6);
+  border-radius: var(--radius-sm, 4px);
+  overflow: hidden;
+  background: var(--surface-card, #fff);
+}
+
+.variant-stepper-btn {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  background: var(--surface-section, #f4f6f8);
+  color: var(--text-secondary, #5a6570);
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 
-.variant-readout {
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--plm-accent);
+.variant-stepper-btn:hover:not(:disabled) {
+  background: #e8ecf0;
+  color: var(--text-primary, #1a1d21);
 }
 
-.variant-caption {
-  width: 100%;
-  flex-basis: 100%;
+.variant-stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.variant-stepper-btn i {
   font-size: 11px;
-  color: var(--text-muted);
+}
+
+.variant-stepper-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  padding: 0 6px;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--plm-accent, #005685);
+  border-left: 1px solid var(--surface-border-light, #dee2e6);
+  border-right: 1px solid var(--surface-border-light, #dee2e6);
+  background: var(--surface-card, #fff);
 }
 </style>
