@@ -1,6 +1,6 @@
 <template>
   <div class="plm-app">
-    <AppHeader />
+   
     <main class="plm-workspace">
       <RouterView />
     </main>
@@ -14,17 +14,18 @@ import AppHeader from './components/app-header.vue'
 
 <style scoped>
 .plm-app {
-  min-height: 100vh;
-  background: var(--surface-ground, #ebeef2);
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  background: var(--surface-ground, #e4e8ee);
 }
 
 .plm-workspace {
   flex: 1;
-  max-width: 720px;
   width: 100%;
+  max-width: 640px;
   margin: 0 auto;
-  padding: 16px 20px 40px;
+  padding: 24px 32px 28px;
+  box-sizing: border-box;
 }
 </style>

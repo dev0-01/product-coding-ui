@@ -14,6 +14,7 @@
     </div>
 
     <template v-else>
+      <div class="coding-form-sheet">
       <!-- ── Top toolbar (Product Rev 2) ── -->
       <div
         v-if="toolbarPlacement === 'top'"
@@ -41,15 +42,9 @@
       </div>
 
       <!-- ── Code Output Panel ── -->
-      <div class="plm-panel code-output-panel">
-        <div class="panel-header">
-          <div class="panel-header-left">
-            <i class="pi pi-hashtag panel-icon"></i>
-            <span class="panel-title">Code Output</span>
-          </div>
-        </div>
-
-        <div class="panel-body">
+      <div class="plm-panel plm-panel-inset code-output-panel">
+        <div class="panel-body code-output-inner">
+          <p class="code-output-caption">Generated code</p>
           <div class="code-display" v-if="codeSegments.length">
             <template v-for="(segment, i) in codeSegments" :key="i">
               <div v-if="segment.type === 'separator'" class="sep-wrapper">
@@ -65,10 +60,7 @@
                     :style="charStyle(segment)"
                   >{{ ch }}</span>
                 </div>
-                <span
-                  class="seg-label"
-                  :style="{ color: segment.accentColor || '#8b939c' }"
-                >{{ segment.label }}</span>
+                
               </div>
             </template>
           </div>
@@ -91,33 +83,46 @@
       </div>
 
       <!-- ── Field Group Panels ── -->
-      <div v-for="group in groups" :key="group.id" class="plm-panel">
-        <div class="panel-header" :style="{ borderLeftColor: group.accent }">
-          <div class="panel-header-left">
-            <i class="pi pi-list panel-icon"></i>
-            <span class="panel-title">{{ group.label }}</span>
-            <span v-if="group.tag" class="panel-badge badge-auto">{{ group.tag }}</span>
-          </div>
-          <span class="panel-field-count">{{ group.fields.length }} fields</span>
-        </div>
+      <div v-for="group in groups" :key="group.id" class="plm-panel plm-panel-inset">
+       
 
-        <div class="panel-body panel-fields">
-          <div v-for="field in group.fields" :key="field.id" class="field-row">
-            <label :for="field.id" class="field-label">
-              {{ field.label }}
-              <span v-if="field.required" class="field-required">*</span>
-            </label>
+        <div class="panel-body panel-fields panel-fields-grid">
+          <div
+            v-for="field in group.fields"
+            :key="field.id"
+            class="field-row"
+            :class="{ 'field-row-span': field.type === 'variantButton' }"
+          >
+            <div class="field-label-row">
+              <label :for="field.id" class="field-label">
+                {{ field.label }}
+                <span v-if="field.required" class="field-required">*</span>
+              </label>
+              <template v-if="field.type === 'select'">
+                <button
+                  v-if="cascadeParentHint(field)"
+                  type="button"
+                  class="field-cascade-trigger"
+                  v-tooltip.top="cascadeParentHint(field)"
+                  :aria-label="cascadeParentHint(field)"
+                >
+                  <i class="pi pi-info-circle" aria-hidden="true"></i>
+                </button>
+                <span v-else class="field-cascade-spacer" aria-hidden="true" />
+              </template>
+            </div>
 
             <template v-if="field.type === 'select'">
             <Select
               :key="selectInstanceKey(group, field)"
               :id="field.id"
+              size="small"
               :modelValue="selections[field.id]"
               @update:modelValue="onFieldChange(field.id, $event)"
               :options="field.options"
               optionLabel="description"
               dataKey="code"
-              :placeholder="`-- Select ${field.label} --`"
+              :placeholder="`Select ${field.label}`"
               class="field-select"
               :disabled="isCascadeBlocked(field)"
               showClear
@@ -142,25 +147,19 @@
               </template>
             </Select>
 
-            <p
-              v-if="cascadeParentHint(field)"
-              class="field-cascade-gate"
-              role="status"
+            <div
+              v-if="showOptionCodes && selections[field.id]"
+              class="field-hint"
             >
-              <i class="pi pi-info-circle" aria-hidden="true"></i>
-              <span>{{ cascadeParentHint(field) }}</span>
-            </p>
-
-            <div v-if="selections[field.id]" class="field-hint" :class="{ 'field-hint-codes-hidden': !showOptionCodes }">
               <i class="pi pi-check-circle"></i>
-              <span v-if="showOptionCodes">{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
-              <span v-else>{{ selections[field.id].description }}</span>
+              <span>{{ selections[field.id].code }} &middot; {{ selections[field.id].description }}</span>
             </div>
             </template>
 
             <InputText
               v-else-if="field.type === 'text'"
               :id="field.id"
+              size="small"
               class="field-input"
               :placeholder="field.label"
               :modelValue="freeTextSelections[field.id] ?? ''"
@@ -168,7 +167,36 @@
             />
 
             <div v-else-if="field.type === 'variantButton'" class="variant-field">
-              <div class="variant-stepper" role="group" :aria-label="`${field.label} counter`">
+              <!-- Rev 2 (slide 16): single action — increment trailing segment; no decrement in spec -->
+              <div
+                v-if="variantIncrementOnly"
+                class="variant-rev2"
+                role="group"
+                :aria-label="`${field.label} — advance counter`"
+              >
+                <div class="variant-rev2-main">
+                  <div class="variant-readout mono" aria-live="polite">
+                    {{ paddedVariant }}
+                  </div>
+                  <button
+                    type="button"
+                    class="plm-btn plm-btn-primary variant-bump-btn"
+                    @click="$emit('increment-variant')"
+                  >
+                    <i class="pi pi-plus"></i>
+                    Next variant
+                  </button>
+                </div>
+                <p class="variant-doc-hint" role="note">
+                  Each click increases the trailing segment (e.g. 001 → 002). Use Reset All Fields to restore 001.
+                </p>
+              </div>
+              <div
+                v-else
+                class="variant-stepper"
+                role="group"
+                :aria-label="`${field.label} counter`"
+              >
                 <button
                   type="button"
                   class="variant-stepper-btn"
@@ -195,10 +223,11 @@
       </div>
 
       <!-- ── Bottom toolbar (Material / fallback) ── -->
-      <div v-if="toolbarPlacement === 'bottom' && hasAnySelection" class="plm-toolbar">
+      <div v-if="toolbarPlacement === 'bottom' && hasAnySelection" class="plm-toolbar plm-toolbar-bottom">
         <button class="plm-btn plm-btn-outline" @click="$emit('clear')">
           <i class="pi pi-refresh"></i> Reset All Fields
         </button>
+      </div>
       </div>
     </template>
   </div>
@@ -223,6 +252,8 @@ const props = defineProps({
   paddedVariant: { type: String, default: '001' },
   freeTextSelections: { type: Object, default: () => ({}) },
   variantStepActive: { type: Boolean, default: false },
+  /** Rev 2: variant dropdown replaced by increment-only button (no − control). */
+  variantIncrementOnly: { type: Boolean, default: false },
   showOptionCodes: { type: Boolean, default: true },
 })
 
@@ -339,7 +370,24 @@ function onFreeText(fieldId, value) {
 .coding-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+}
+
+/* Raised shell: separates form from page background */
+.coding-form-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 20px 14px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+  background: var(--surface-card, #fff);
+  border: 1px solid rgba(27, 42, 74, 0.09);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sheet, var(--shadow-panel-raised));
 }
 
 /* ── State Overlays ── */
@@ -372,6 +420,32 @@ function onFreeText(fieldId, value) {
   border-radius: var(--radius-md, 4px);
   box-shadow: var(--shadow-panel);
   overflow: hidden;
+}
+
+.plm-panel-inset {
+  box-shadow: none;
+  border-radius: var(--radius-lg, 6px);
+  background: var(--surface-section, #f6f8fa);
+  border: 1px solid #e1e6ec;
+}
+
+.code-output-panel.plm-panel-inset {
+  background: linear-gradient(
+    165deg,
+    #e8edf3 0%,
+    #f6f9fc 48%,
+    #fafcfd 100%
+  );
+  border-color: #d2dae3;
+}
+
+.code-output-caption {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b939c);
 }
 
 .panel-header {
@@ -424,7 +498,12 @@ function onFreeText(fieldId, value) {
 }
 
 .panel-body {
-  padding: 14px;
+  padding: 10px 14px;
+}
+
+.panel-body.code-output-inner {
+  padding: 6px 12px 6px;
+  background: transparent;
 }
 
 /* ── Code Character Display ── */
@@ -432,9 +511,9 @@ function onFreeText(fieldId, value) {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   flex-wrap: wrap;
-  padding: 10px 0 14px;
+  padding: 0 0 4px;
 }
 
 .seg-wrapper {
@@ -450,14 +529,14 @@ function onFreeText(fieldId, value) {
 }
 
 .code-char {
-  width: 30px;
-  height: 34px;
+  width: 22px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'Consolas', 'Courier New', monospace;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 11px;
   border-radius: var(--radius-sm, 3px);
   border: 1px solid;
 }
@@ -472,7 +551,7 @@ function onFreeText(fieldId, value) {
 .sep-wrapper {
   display: flex;
   align-items: flex-start;
-  padding-top: 6px;
+  padding-top: 3px;
 }
 
 .code-sep {
@@ -500,8 +579,8 @@ function onFreeText(fieldId, value) {
 .output-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 3px 0 4px;
   border-bottom: 1px solid var(--surface-border-light, #dee2e6);
 }
 
@@ -510,25 +589,25 @@ function onFreeText(fieldId, value) {
 }
 
 .output-key {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-muted, #8b939c);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  min-width: 110px;
+  min-width: 82px;
   flex-shrink: 0;
 }
 
 .output-val {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-primary, #1a1d21);
 }
 
 .output-val.mono {
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 14px;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  letter-spacing: 0.04em;
 }
 
 .val-empty {
@@ -536,33 +615,110 @@ function onFreeText(fieldId, value) {
   color: var(--text-muted, #8b939c);
 }
 
-/* ── Field Rows (vertical layout: label above, select below) ── */
+/* ── Field rows: grid of sections; each cell stacks label → control → hints vertically ── */
 .panel-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
   padding: 0;
+}
+
+.panel-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0px;
+  align-items: start;
+}
+
+@media (max-width: 560px) {
+  .panel-fields-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .field-row {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--surface-border-light, #dee2e6);
+  gap: 0;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(27, 42, 74, 0.08);
+  border-radius: var(--radius-md, 4px);
+  background: var(--surface-card, #fff);
+  box-shadow: none;
+  transition: border-color 0.15s ease;
 }
 
-.field-row:last-child {
-  border-bottom: none;
+.field-row:hover {
+  border-color: color-mix(in srgb, var(--plm-accent, #005685) 28%, var(--surface-border-light));
+}
+
+.field-row-span {
+  grid-column: 1 / -1;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 1px;
+  min-height: 28px;
+}
+
+.field-label-row .field-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-cascade-trigger {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md, 4px);
+  color: var(--plm-accent, #005685);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.field-cascade-trigger:hover {
+  background: var(--plm-accent-light, #e8f4fc);
+  color: var(--plm-accent-hover, #003d5c);
+}
+
+.field-cascade-trigger:focus-visible {
+  outline: 2px solid var(--plm-accent, #005685);
+  outline-offset: 1px;
+}
+
+.field-cascade-trigger i {
+  font-size: 15px;
+}
+
+/* Keeps label row height aligned when only some fields show the info control */
+.field-cascade-spacer {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: -2px -4px 0 0;
+  pointer-events: none;
 }
 
 .field-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary, #5a6570);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted, #8b939c);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
+  margin: 0;
+  line-height: 1.2;
 }
 
 .field-required {
@@ -578,44 +734,14 @@ function onFreeText(fieldId, value) {
 .field-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-size: 11px;
   color: var(--color-success, #1e7e34);
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .field-hint i {
   font-size: 11px;
-}
-
-.field-hint-codes-hidden {
-  /* In Rev2, show hint but without the code part */
-  color: var(--text-muted, #8b939c);
-}
-
-.field-cascade-gate {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 6px 0 0;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--text-secondary, #5a6570);
-  background: var(--surface-section, #f4f6f8);
-  border: 1px solid var(--surface-border-light, #dee2e6);
-  border-radius: var(--radius-sm, 4px);
-}
-
-.field-cascade-gate i {
-  margin-top: 1px;
-  flex-shrink: 0;
-  color: var(--plm-accent, #005685);
-  font-size: 13px;
-}
-
-.field-cascade-gate span {
-  flex: 1;
 }
 
 /* ── Dropdown Options ── */
@@ -628,7 +754,7 @@ function onFreeText(fieldId, value) {
 .opt-code {
   font-family: 'Consolas', monospace;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--plm-accent, #005685);
   background: var(--plm-accent-light, #e8f4fc);
   padding: 1px 6px;
@@ -639,7 +765,7 @@ function onFreeText(fieldId, value) {
 
 .opt-desc {
   color: var(--text-primary, #1a1d21);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 /* ── PLM Buttons ── */
@@ -683,7 +809,17 @@ function onFreeText(fieldId, value) {
 
 .plm-toolbar-top {
   gap: 8px;
-  padding: 4px 0 2px;
+  padding: 0 0 6px;
+  margin: 0;
+  border-bottom: 1px solid var(--surface-border-light, #dee2e6);
+  background: transparent;
+  box-shadow: none;
+}
+
+.plm-toolbar-bottom {
+  padding: 10px 0 0;
+  margin: 4px 0 0;
+  border-top: 1px solid var(--surface-border-light, #dee2e6);
 }
 
 .toolbar-spacer {
@@ -724,32 +860,158 @@ function onFreeText(fieldId, value) {
 
 .field-input {
   width: 100%;
-  font-size: 13px;
+  font-size: 11px;
+}
+
+/* Denser PrimeVue controls — small typography; compact trigger icons */
+.field-row :deep(.p-select),
+.field-row :deep(.p-inputtext) {
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+  margin-top: 0;
+}
+
+.field-row :deep(.p-select .p-select-label) {
+  flex: 1;
+  min-width: 0;
+  padding-block: 0.22rem;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-row :deep(.p-inputtext) {
+  padding-block: 0.22rem;
+  font-size: 11px;
+  min-height: 2.125rem;
+  box-sizing: border-box;
+}
+
+.field-row :deep(.p-select .p-select-dropdown) {
+  width: 1.75rem;
+  min-width: 1.75rem;
+}
+
+.field-row :deep(.p-select .p-select-dropdown-icon) {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.field-row :deep(.p-select .p-select-dropdown svg) {
+  width: 0.7rem !important;
+  height: 0.7rem !important;
+}
+
+.field-row :deep(.p-select .p-select-clear-icon) {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.field-row :deep(.p-select .p-select-clear-icon svg) {
+  width: 0.65rem !important;
+  height: 0.65rem !important;
+}
+
+/* One-line selects: same closed height with or without value / clear icon */
+.field-row :deep(.p-select.p-inputwrapper) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.125rem;
+  max-height: 2.125rem;
+}
+
+.field-row :deep(.p-select .opt-desc-only) {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-row :deep(.p-select .opt-item) {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.field-row :deep(.p-select .opt-item .opt-desc) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .opt-desc-only {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-primary);
 }
 
 .variant-field {
   display: flex;
   align-items: flex-start;
+  width: 100%;
+}
+
+.variant-rev2 {
+  width: 100%;
+}
+
+.variant-rev2-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.variant-readout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4rem;
+  padding: 6px 11px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: var(--plm-accent, #005685);
+  background: var(--plm-accent-light, #e8f4fc);
+  border: 1px solid color-mix(in srgb, var(--plm-accent, #005685) 25%, transparent);
+  border-radius: var(--radius-md, 4px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.variant-bump-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.variant-doc-hint {
+  margin: 5px 0 0;
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--text-muted, #8b939c);
 }
 
 .variant-stepper {
   display: inline-flex;
   align-items: stretch;
-  height: 28px;
+  height: 32px;
   border: 1px solid var(--surface-border-light, #dee2e6);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-md, 4px);
   overflow: hidden;
   background: var(--surface-card, #fff);
+  box-shadow: 0 1px 2px rgba(27, 42, 74, 0.04);
 }
 
 .variant-stepper-btn {
-  width: 28px;
-  min-width: 28px;
+  width: 32px;
+  min-width: 32px;
   padding: 0;
   margin: 0;
   border: none;
@@ -763,25 +1025,25 @@ function onFreeText(fieldId, value) {
 }
 
 .variant-stepper-btn:hover:not(:disabled) {
-  background: #e8ecf0;
-  color: var(--text-primary, #1a1d21);
+  background: color-mix(in srgb, var(--plm-accent-light, #e8f4fc) 85%, var(--surface-section));
+  color: var(--plm-accent, #005685);
 }
 
 .variant-stepper-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
 .variant-stepper-btn i {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .variant-stepper-value {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.75rem;
-  padding: 0 6px;
+  min-width: 3rem;
+  padding: 0 8px;
   font-family: Consolas, 'Courier New', monospace;
   font-size: 13px;
   font-weight: 600;

@@ -50,6 +50,25 @@ export function useProductRev2Preview(
     )
   })
 
+  /** Cascade order — deepest resolved selection supplies the “live” first segment until the tree is complete. */
+  const HIERARCHY_CHAIN = ['series', 'model', 'class', 'subClass']
+
+  function deepestHierarchySelection() {
+    let last = null
+    for (const id of HIERARCHY_CHAIN) {
+      const s = selections[id]
+      if (s != null && s !== '') last = s
+    }
+    return last
+  }
+
+  function optionCode(sel) {
+    if (sel == null || sel === '') return ''
+    if (typeof sel !== 'object') return String(sel)
+    const c = sel.code ?? sel.value
+    return c != null && c !== '' ? String(c) : ''
+  }
+
   const leafFieldId = computed(
     () => previewConfig.value?.hierarchyLeafCodeField || 'class',
   )
@@ -72,15 +91,34 @@ export function useProductRev2Preview(
     String(unref(variantOrdinalRef)).padStart(variantDigits.value, '0'),
   )
 
+  /** First code segment: final leaf when complete; otherwise the deepest selected tier (live preview). */
+  const firstSegmentCode = computed(() => {
+    if (hierarchyComplete.value) {
+      return optionCode(selections[leafFieldId.value]) || ''
+    }
+    return optionCode(deepestHierarchySelection())
+  })
+
   const generatedCode = computed(() => {
-    if (!hierarchyComplete.value) {
+    const separator = sep.value
+    const md = mainDigits.value
+    const vd = variantDigits.value
+    const padUnd = (n) => '_'.repeat(n)
+
+    if (hierarchyComplete.value) {
+      const leafCode = optionCode(selections[leafFieldId.value])
+      if (!leafCode) {
+        return ''
+      }
+      return [leafCode, paddedMainStub.value, paddedVariant.value].join(separator)
+    }
+
+    /** Partial tree — show live first segment with placeholder stub + variant slots */
+    const first = firstSegmentCode.value
+    if (!first) {
       return ''
     }
-    const leafCode = selections[leafFieldId.value]?.code || ''
-    if (!leafCode) {
-      return ''
-    }
-    return [leafCode, paddedMainStub.value, paddedVariant.value].join(sep.value)
+    return [first, padUnd(md), padUnd(vd)].join(separator)
   })
 
   const generatedDescription = computed(() => {
@@ -120,21 +158,29 @@ export function useProductRev2Preview(
     const accentColor = groupAccentMap.value[groupId] || '#3b82f6'
 
     const leafCode = hierarchyComplete.value
-      ? selections[leafFieldId.value]?.code || ''
+      ? optionCode(selections[leafFieldId.value])
       : ''
 
-    const segLeafText =
-      hierarchyComplete.value && leafCode ? leafCode : '_'.repeat(4)
+    const previewFirst = firstSegmentCode.value
+    const segLeafText = hierarchyComplete.value
+      ? (leafCode || '_'.repeat(4))
+      : previewFirst
+        ? previewFirst
+        : '_'.repeat(4)
 
     const mainText = hierarchyComplete.value ? paddedMainStub.value : '_'.repeat(mainDigits.value)
     const varText = hierarchyComplete.value ? paddedVariant.value : '_'.repeat(variantDigits.value)
+
+    const firstFilled = hierarchyComplete.value
+      ? !!leafCode
+      : !!previewFirst
 
     return [
       {
         text: segLeafText,
         fieldId: leafFieldId.value,
         type: 'field',
-        filled: hierarchyComplete.value && !!leafCode,
+        filled: firstFilled,
         group: groupId,
         label: field?.label || 'Product code',
         accentColor,

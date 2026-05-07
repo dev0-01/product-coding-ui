@@ -1,13 +1,6 @@
 <template>
   <div class="coding-view">
-    <div class="view-toolbar">
-      <div class="breadcrumb">
-        <span class="crumb">Coding Configuration</span>
-        <i class="pi pi-angle-right crumb-sep"></i>
-        <span class="crumb crumb-active">Material Coding</span>
-      </div>
-    </div>
-
+  
     <CodingForm
       :groups="groups"
       :selections="selections"
@@ -63,6 +56,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
 }
 
 .view-toolbar {

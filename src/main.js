@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
+import Tooltip from 'primevue/tooltip'
 import { createRouter, createWebHistory } from 'vue-router'
 import 'primeicons/primeicons.css'
 import './style.css'
@@ -22,6 +23,8 @@ app.use(PrimeVue, {
     },
   },
 })
+
+app.directive('tooltip', Tooltip)
 
 app.use(router)
 app.mount('#app')
