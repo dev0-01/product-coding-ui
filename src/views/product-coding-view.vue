@@ -1,13 +1,6 @@
 <template>
   <div class="coding-view">
-    <div class="view-toolbar">
-      <div class="breadcrumb">
-        <span class="crumb">Coding Configuration</span>
-        <i class="pi pi-angle-right crumb-sep"></i>
-        <span class="crumb crumb-active">Product Coding</span>
-      </div>
-    </div>
-
+  
     <p v-if="ackBanner" class="ack-banner">
       ACK — no persistence in this phase (per spec).
     </p>
@@ -26,6 +19,7 @@
       :free-text-selections="textFields"
       :padded-variant="paddedVariantDisplay"
       :variant-step-active="variantOrdinal > 1"
+      :variant-increment-only="isRev2"
       :hierarchy-relations="hierarchyRelations"
       @update:selection="onSelectionChange"
       @update:freetext="onFreeText"
@@ -216,7 +210,8 @@ onMounted(() => {
 .coding-view {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  width: 100%;
 }
 
 .view-toolbar {
