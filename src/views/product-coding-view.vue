@@ -39,6 +39,7 @@ import { useCodingConfig } from '../composables/use-coding-config.js'
 import { useCodeGenerator } from '../composables/use-code-generator.js'
 import { useResolvedHierarchyGroups } from '../composables/use-product-hierarchy-groups.js'
 import { useProductRev2Preview } from '../composables/use-product-rev2-preview.js'
+import { normalizeSelectedOption } from '../composables/use-selection-helpers.js'
 
 const CONFIG_NAME = 'product'
 
@@ -153,18 +154,6 @@ function autoSelectSubClass() {
 
 function onFreeText({ fieldId, value }) {
   textFields[fieldId] = value
-}
-
-function normalizeSelectedOption(val) {
-  if (val == null || val === '') return null
-  if (typeof val !== 'object') return val
-  const raw = val.code ?? val.value
-  if (raw == null || raw === '') return null
-  const code = String(raw)
-  const description = val.description ?? val.label ?? ''
-  const shortCode =
-    val.shortCode != null ? String(val.shortCode) : code
-  return { code, description, shortCode }
 }
 
 function onSelectionChange({ fieldId, value }) {
